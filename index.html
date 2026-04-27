@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TripTrekker · Meghalaya</title>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ── Tokens ────────────────────────────────────────────────────────────────── */
+:root{
+  --ink:#0e1a14; --surface:#162019; --surface2:#1e2d22;
+  --border:rgba(120,200,120,0.15);
+  --green:#4caf78; --green-lt:#7ed9a0; --green-dk:#2e7d52;
+  --gold:#c8922a; --amber:#e8b84b;
+  --text:#d4edda; --dim:#6a917a;
+  --shadow-green:0 0 0 2px var(--green),0 0 20px rgba(76,175,120,0.3);
+  --font-d:'Playfair Display',Georgia,serif;
+  --font-b:'DM Sans',system-ui,sans-serif;
+  --sw:370px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font-b);background:var(--ink);color:var(--text);display:flex;flex-direction:column}
+
+/* ── Category accent colors ────────────────────────────────────────────────── */
+.cat-waterfall{--cc:#2196f3} .cat-lake{--cc:#0288d1} .cat-canyon{--cc:#ff8f00}
+.cat-village{--cc:#43a047}   .cat-city{--cc:#ab47bc}  .cat-bridge{--cc:#00897b}
+.cat-cave{--cc:#7b1fa2}      .cat-forest{--cc:#2e7d32} .cat-rock{--cc:#c8922a}
+.cat-trek{--cc:#e65100}      .cat-park{--cc:#1b5e20}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+header{
+  height:58px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 18px;gap:12px;
+  flex-shrink:0;z-index:600;position:relative;
+}
+header::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--green),transparent);opacity:.45;
+}
+.logo{font-family:var(--font-d);font-size:21px;font-weight:700;color:var(--green-lt);letter-spacing:.4px}
+.logo-sub{font-size:11px;color:var(--dim);letter-spacing:.5px}
+.pill{
+  font-size:11px;padding:3px 11px;border-radius:99px;
+  border:1px solid var(--border);color:var(--dim);letter-spacing:.4px;
+}
+#statusPill{
+  margin-left:auto;background:rgba(76,175,120,.1);
+  color:var(--green);border-color:rgba(76,175,120,.3);transition:all .3s;
+}
+#statusPill.ready{background:rgba(76,175,120,.15);color:var(--green-lt)}
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+.workspace{flex:1;display:flex;overflow:hidden}
+#map{flex:1;height:100%}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+.sidebar{
+  width:var(--sw);flex-shrink:0;background:var(--surface);
+  border-right:1px solid var(--border);display:flex;
+  flex-direction:column;overflow:hidden;position:relative;
+}
+.panel{
+  display:flex;flex-direction:column;height:100%;
+  position:absolute;inset:0;transition:opacity .28s,transform .28s;
+}
+.panel.hidden{opacity:0;pointer-events:none;transform:translateX(-14px)}
+
+/* ── Panel header ──────────────────────────────────────────────────────────── */
+.phdr{padding:16px 17px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ptitle{font-family:var(--font-d);font-size:17px;color:var(--green-lt);margin-bottom:3px}
+.psub{font-size:12px;color:var(--dim);line-height:1.4}
+.sel-count{color:var(--green);font-weight:600}
+
+/* ── Spot list ─────────────────────────────────────────────────────────────── */
+.spots-scroll{flex:1;overflow-y:auto;padding:11px;display:flex;flex-direction:column;gap:7px}
+
+/* ── Category filter bar ───────────────────────────────────────────────────── */
+.filter-bar{
+  padding:8px 11px 6px;display:flex;gap:5px;flex-wrap:wrap;
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.fc-btn{
+  font-size:10px;padding:3px 9px;border-radius:99px;cursor:pointer;
+  border:1px solid var(--border);background:transparent;
+  color:var(--dim);font-family:var(--font-b);transition:all .18s;
+}
+.fc-btn:hover{color:var(--text);border-color:rgba(76,175,120,.4)}
+.fc-btn.active{background:rgba(76,175,120,.15);color:var(--green-lt);border-color:var(--green)}
+
+/* ── Spot card ─────────────────────────────────────────────────────────────── */
+.spot-card{
+  display:flex;align-items:center;gap:11px;border-radius:10px;
+  background:var(--surface2);border:1.5px solid var(--border);
+  cursor:pointer;transition:border-color .18s,box-shadow .18s,transform .12s;
+  overflow:hidden;padding:10px 10px 10px 0;
+  animation:cardIn .3s ease both;
+}
+@keyframes cardIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+.spot-card:hover{border-color:rgba(76,175,120,.4);transform:translateY(-1px)}
+.spot-card.selected{border-color:var(--green);box-shadow:var(--shadow-green);background:rgba(76,175,120,.06)}
+.spot-card.hidden-cat{display:none}
+
+/* left category stripe */
+.cat-stripe{width:4px;align-self:stretch;flex-shrink:0;border-radius:0 3px 3px 0;background:var(--cc,#4caf78)}
+
+/* emoji bubble */
+.spot-icon{
+  width:42px;height:42px;border-radius:10px;flex-shrink:0;
+  background:rgba(76,175,120,.08);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+}
+.spot-body{flex:1;min-width:0}
+.spot-name{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spot-desc{font-size:11px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat-badge{
+  display:inline-block;font-size:9px;padding:1px 6px;border-radius:4px;
+  margin-top:4px;background:rgba(255,255,255,.04);color:var(--cc,#4caf78);
+  border:1px solid rgba(255,255,255,.06);text-transform:uppercase;letter-spacing:.4px;
+}
+.spot-chk{width:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+.pfooter{padding:12px 14px;border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;gap:7px}
+.btn{
+  width:100%;padding:11px;border-radius:8px;border:none;
+  font-family:var(--font-b);font-size:13px;font-weight:600;
+  cursor:pointer;transition:all .2s;letter-spacing:.3px;
+}
+.btn-primary{background:linear-gradient(135deg,var(--green-dk),var(--green));color:#fff}
+.btn-primary:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px);box-shadow:0 6px 18px rgba(76,175,120,.35)}
+.btn-primary:disabled{opacity:.3;cursor:not-allowed;filter:none;transform:none}
+.btn-ghost{background:transparent;color:var(--dim);border:1px solid var(--border)}
+.btn-ghost:hover{background:var(--surface2);color:var(--text)}
+
+/* ── Route panel ───────────────────────────────────────────────────────────── */
+.route-hero{
+  padding:18px 17px 14px;border-bottom:1px solid var(--border);flex-shrink:0;
+  position:relative;overflow:hidden;
+}
+.route-hero::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at top left,rgba(76,175,120,.1) 0%,transparent 65%);
+  pointer-events:none;
+}
+.rkm-lbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1.2px}
+.rkm{font-family:var(--font-d);font-size:40px;color:var(--green-lt);line-height:1.1;margin:2px 0 4px}
+.rmeta{font-size:11px;color:var(--dim)}
+.rdist-note{font-size:10px;color:var(--dim);margin-top:3px;font-style:italic}
+
+.route-scroll{flex:1;overflow-y:auto;padding:12px 15px}
+.route-step{display:flex;gap:10px;padding:7px 0;position:relative;animation:stepIn .35s ease both}
+@keyframes stepIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+.route-step:not(:last-child)::after{
+  content:'';position:absolute;left:13px;top:34px;bottom:-4px;width:2px;
+  background:linear-gradient(to bottom,var(--green),var(--border));border-radius:1px;
+}
+.step-badge{
+  width:28px;height:28px;border-radius:50%;background:var(--green);color:var(--ink);
+  font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;z-index:1;box-shadow:0 2px 8px rgba(76,175,120,.35);
+}
+.step-badge.origin{background:var(--green-dk);color:#fff}
+.step-badge.ret{background:var(--surface2);border:2px solid var(--green);color:var(--green)}
+.step-detail{flex:1;padding-top:3px;min-width:0}
+.step-name{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step-desc{font-size:11px;color:var(--dim);margin-top:1px}
+.step-dist{font-size:10px;color:var(--dim);margin-top:3px}
+.leg-km{
+  display:inline-block;background:rgba(76,175,120,.12);color:var(--green);
+  padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:3px;
+}
+
+/* ── Leaflet overrides (dark popup) ────────────────────────────────────────── */
+.leaflet-popup-content-wrapper{
+  background:var(--surface2)!important;border:1px solid var(--border)!important;
+  border-radius:10px!important;box-shadow:0 8px 32px rgba(0,0,0,.6)!important;
+  padding:0!important;color:var(--text)!important;
+}
+.leaflet-popup-content{margin:0!important}
+.leaflet-popup-tip{background:var(--surface2)!important}
+.leaflet-popup-close-button{color:var(--dim)!important;right:8px!important;top:6px!important}
+
+/* ── Animated route line ───────────────────────────────────────────────────── */
+.animated-route{animation:dashFlow .7s linear infinite}
+@keyframes dashFlow{to{stroke-dashoffset:-20}}
+
+/* ── Loading overlay ───────────────────────────────────────────────────────── */
+.overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(14,26,20,.75);backdrop-filter:blur(6px);
+  z-index:900;align-items:center;justify-content:center;flex-direction:column;gap:16px;
+}
+.overlay.active{display:flex}
+.spinner{width:48px;height:48px;border:3px solid rgba(76,175,120,.2);border-top-color:var(--green);border-radius:50%;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ov-title{font-family:var(--font-d);font-size:18px;color:var(--green-lt)}
+.ov-sub{font-size:12px;color:var(--dim)}
+
+/* ── Toast ─────────────────────────────────────────────────────────────────── */
+.toast{
+  display:none;position:fixed;bottom:22px;right:22px;max-width:360px;
+  background:#1a0a0a;border:1px solid #7a3030;color:#f08080;
+  padding:11px 15px;border-radius:10px;font-size:12.5px;z-index:950;
+  line-height:1.5;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:toastIn .2s ease;
+}
+@keyframes toastIn{from{transform:translateY(6px);opacity:0}}
+.toast.active{display:block}
+
+/* ── Legend ────────────────────────────────────────────────────────────────── */
+.legend{
+  position:absolute;bottom:24px;right:16px;z-index:500;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:10px 13px;font-size:11px;
+  color:var(--dim);min-width:130px;
+}
+.legend-title{font-weight:600;color:var(--green);margin-bottom:6px;font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+.leg-row{display:flex;align-items:center;gap:6px;margin:3px 0}
+.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">Trip·Trekker</div>
+    <div class="logo-sub">MEGHALAYA</div>
+  </div>
+  <div class="pill">29 Locations · TSP Optimised</div>
+  <div id="statusPill" class="pill">Loading…</div>
+</header>
+
+<div class="workspace">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+
+    <!-- Panel 1: Spot selection -->
+    <div class="panel" id="spotsPanel">
+      <div class="phdr">
+        <div class="ptitle">Select Your Stops</div>
+        <div class="psub"><span class="sel-count" id="selCount">0</span> selected &mdash; max 12 · click card or pin to toggle</div>
+      </div>
+
+      <div class="filter-bar" id="filterBar">
+        <button class="fc-btn active" onclick="setFilter('all',this)">All</button>
+        <button class="fc-btn" onclick="setFilter('waterfall',this)">🌊 Falls</button>
+        <button class="fc-btn" onclick="setFilter('lake',this)">🏞️ Lakes</button>
+        <button class="fc-btn" onclick="setFilter('cave',this)">🕳️ Caves</button>
+        <button class="fc-btn" onclick="setFilter('bridge',this)">🌉 Bridges</button>
+        <button class="fc-btn" onclick="setFilter('city',this)">🏙️ Cities</button>
+        <button class="fc-btn" onclick="setFilter('village',this)">🏡 Villages</button>
+        <button class="fc-btn" onclick="setFilter('park',this)">🌳 Parks</button>
+        <button class="fc-btn" onclick="setFilter('forest',this)">🌿 Forest</button>
+      </div>
+
+      <div class="spots-scroll" id="spotsList"></div>
+
+      <div class="pfooter">
+        <button class="btn btn-primary" id="runBtn" disabled onclick="runTSP()">✦ Find Optimal Route</button>
+        <button class="btn btn-ghost" onclick="clearSel()">Clear Selection</button>
+      </div>
+    </div>
+
+    <!-- Panel 2: Route result -->
+    <div class="panel hidden" id="routePanel">
+      <div class="route-hero">
+        <div class="rkm-lbl">Approximate Road Distance</div>
+        <div class="rkm" id="routeKm">— km</div>
+        <div class="rmeta" id="routeMeta"></div>
+        <div class="rdist-note">*Haversine × 1.5 terrain factor for Meghalaya hills</div>
+      </div>
+      <div class="route-scroll" id="routeSteps"></div>
+      <div class="pfooter">
+        <button class="btn btn-primary" onclick="backToSpots()">← Adjust Selection</button>
+        <button class="btn btn-ghost" onclick="clearSel();backToSpots()">Start Over</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Map -->
+  <div style="position:relative;flex:1">
+    <div id="map" style="height:100%"></div>
+    <!-- Category legend -->
+    <div class="legend" id="legend">
+      <div class="legend-title">Categories</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#2196f3"></div>Waterfall</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#0288d1"></div>Lake / River</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#7b1fa2"></div>Cave</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#00897b"></div>Root Bridge</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#ab47bc"></div>City</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#43a047"></div>Village</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#1b5e20"></div>National Park</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#2e7d32"></div>Forest</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#e65100"></div>Trek</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#c8922a"></div>Rock</div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="spinner"></div>
+  <div class="ov-title">Computing optimal route…</div>
+  <div class="ov-sub">Branch &amp; Bound TSP · haversine distances</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+/* ── Category colours ──────────────────────────────────────────────────────── */
+const CAT_COLOR = {
+  waterfall:'#2196f3', lake:'#0288d1', canyon:'#ff8f00',
+  village:'#43a047',   city:'#ab47bc', bridge:'#00897b',
+  cave:'#7b1fa2',      forest:'#2e7d32', rock:'#c8922a',
+  trek:'#e65100',      park:'#1b5e20',
+};
+const catColor = c => CAT_COLOR[c] || '#4caf78';
+
+/* ── State ─────────────────────────────────────────────────────────────────── */
+let map, allSpots=[], selected=new Set();
+let spotMarkers=[], routeMarkers=[], routeLine=null;
+let activeFilter='all';
+
+/* ── Init map ──────────────────────────────────────────────────────────────── */
+function initMap(){
+  map = L.map('map',{
+    center:[25.35, 91.5],
+    zoom:9,
+    zoomControl:true,
+    attributionControl:true,
+  });
+
+  // CartoDB dark matter — free, no API key
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" style="color:#6a917a">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" style="color:#6a917a">CARTO</a>',
+    subdomains:'abcd', maxZoom:19,
+  }).addTo(map);
+}
+
+/* ── Custom divIcon marker ─────────────────────────────────────────────────── */
+function makeIcon(label, color, size=36, ring=false){
+  const border = ring ? `border:2.5px solid ${color};background:#1e2d22;color:${color}` : `background:${color};color:#fff`;
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:${size}px;height:${size}px;border-radius:50%;${border};
+      display:flex;align-items:center;justify-content:center;font-weight:700;
+      font-size:${label.length>2?11:14}px;box-shadow:0 2px 10px rgba(0,0,0,.5);
+      font-family:'DM Sans',sans-serif">${label}</div>`,
+    iconSize:[size,size], iconAnchor:[size/2,size/2], popupAnchor:[0,-(size/2+6)],
+  });
+}
+
+/* ── Popup HTML ─────────────────────────────────────────────────────────────── */
+function popupHTML(s, step=null){
+  const cc = catColor(s.cat);
+  return `<div style="padding:12px 14px;min-width:170px;font-family:'DM Sans',sans-serif">
+    ${step ? `<div style="font-size:10px;color:#6a917a;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Stop ${step}</div>` : ''}
+    <div style="font-size:22px;margin-bottom:4px">${s.emoji}</div>
+    <div style="font-weight:700;font-size:13px;color:#d4edda">${s.name}</div>
+    <div style="font-size:10px;margin-top:4px;padding:2px 7px;border-radius:4px;display:inline-block;
+      background:rgba(255,255,255,.06);color:${cc};text-transform:uppercase;letter-spacing:.5px">${s.cat}</div>
+    <div style="font-size:11px;color:#6a917a;margin-top:5px;line-height:1.4">${s.desc||''}</div>
+  </div>`;
+}
+
+/* ── Place spot markers ─────────────────────────────────────────────────────── */
+function placeSpotMarkers(){
+  spotMarkers.forEach(m=>map.removeLayer(m));
+  spotMarkers=[];
+  allSpots.forEach((s,i)=>{
+    const sel = selected.has(i);
+    const color = catColor(s.cat);
+    const label = sel ? '✓' : s.emoji;
+    const size  = sel ? 38 : 34;
+    const m = L.marker([s.lat,s.lng],{
+      icon: makeIcon(label, color, size, false),
+      title: s.name,
+    }).addTo(map);
+    m.bindPopup(popupHTML(s), {className:'', closeButton:true, maxWidth:240});
+    m.on('click',()=>{ toggleSpot(i); });
+    spotMarkers.push(m);
+  });
+}
+
+/* ── Load spots ─────────────────────────────────────────────────────────────── */
+async function loadSpots(){
+  try{
+    const r = await fetch('/api/spots');
+    allSpots = await r.json();
+    if(allSpots.error){ showError(allSpots.error); return; }
+    renderCards();
+    placeSpotMarkers();
+    const pill=document.getElementById('statusPill');
+    pill.textContent=`${allSpots.length} spots ready`;
+    pill.classList.add('ready');
+  }catch(e){ showError('Failed to load spots: '+e.message); }
+}
+
+/* ── Render cards ───────────────────────────────────────────────────────────── */
+function renderCards(){
+  document.getElementById('spotsList').innerHTML = allSpots.map((s,i)=>{
+    const sel = selected.has(i);
+    const cc  = catColor(s.cat);
+    const hide= (activeFilter!=='all' && s.cat!==activeFilter) ? 'hidden-cat' : '';
+    return `
+    <div class="spot-card cat-${s.cat} ${sel?'selected':''} ${hide}" id="card-${i}"
+         onclick="toggleSpot(${i})" style="animation-delay:${i*25}ms">
+      <div class="cat-stripe" style="background:${cc}"></div>
+      <div class="spot-icon">${s.emoji}</div>
+      <div class="spot-body">
+        <div class="spot-name">${s.name}</div>
+        <div class="spot-desc">${s.desc}</div>
+        <div class="cat-badge" style="color:${cc}">${s.cat}</div>
+      </div>
+      <div class="spot-chk">
+        ${sel
+          ? `<svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="${cc}"/><path d="M6 10l3 3 5-5" stroke="#0e1a14" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`
+          : `<svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" stroke="#2e4035" stroke-width="1.5" fill="none"/></svg>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Filter ─────────────────────────────────────────────────────────────────── */
+function setFilter(cat, btn){
+  activeFilter = cat;
+  document.querySelectorAll('.fc-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCards();
+}
+
+/* ── Toggle spot ────────────────────────────────────────────────────────────── */
+function toggleSpot(i){
+  if(selected.has(i)) selected.delete(i);
+  else if(selected.size<12) selected.add(i);
+  else { showError('Maximum 12 spots selected for exact TSP.'); return; }
+  updateUI();
+}
+function clearSel(){ selected.clear(); updateUI(); }
+function updateUI(){
+  const n=selected.size;
+  document.getElementById('selCount').textContent=n;
+  document.getElementById('runBtn').disabled=n<2;
+  renderCards();
+  placeSpotMarkers();
+}
+
+/* ── Run TSP ────────────────────────────────────────────────────────────────── */
+async function runTSP(){
+  const spots=[...selected].map(i=>allSpots[i]);
+  document.getElementById('overlay').classList.add('active');
+  try{
+    const res=await fetch('/api/run-tsp',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({spots}),
+    });
+    const data=await res.json();
+    if(!res.ok||data.error){ showError(data.error||'TSP failed'); return; }
+    displayRoute(data);
+  }catch(e){ showError('Network error: '+e.message); }
+  finally{ document.getElementById('overlay').classList.remove('active'); }
+}
+
+/* ── Display route ──────────────────────────────────────────────────────────── */
+function displayRoute({route,total_km}){
+  document.getElementById('routeKm').textContent=`${total_km} km`;
+  document.getElementById('routeMeta').textContent=`${route.length} stops · branch & bound optimal`;
+
+  document.getElementById('routeSteps').innerHTML = route.map((step,idx)=>{
+    const isFirst=idx===0, isRet=idx===route.length-1;
+    const prev_km=idx>0?(parseInt(route[idx-1].cumulative_km)||0):0;
+    const this_km=parseInt(step.cumulative_km)||0;
+    const leg=idx>0?this_km-prev_km:0;
+    const bc=isRet?'ret':isFirst?'origin':'';
+    const bl=isRet?'↩':isFirst?'⦿':step.step;
+    return `<div class="route-step" style="animation-delay:${idx*55}ms">
+      <div class="step-badge ${bc}">${bl}</div>
+      <div class="step-detail">
+        <div class="step-name">${step.emoji} ${step.name}</div>
+        <div class="step-desc">${step.desc||''}</div>
+        <div class="step-dist">${step.cumulative_km} km total${leg>0?`<span class="leg-km">+${leg} km</span>`:''}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('spotsPanel').classList.add('hidden');
+  document.getElementById('routePanel').classList.remove('hidden');
+
+  // Remove spot markers
+  spotMarkers.forEach(m=>map.removeLayer(m));
+  clearRouteOverlay();
+
+  const coords = route.filter(s=>s.lat&&s.lng).map(s=>[parseFloat(s.lat),parseFloat(s.lng)]);
+  if(coords.length<2) return;
+
+  // Animated dashed polyline
+  routeLine = L.polyline(coords,{
+    color:'#4caf78', weight:3.5, opacity:.85,
+    dashArray:'12 8', className:'animated-route',
+  }).addTo(map);
+
+  // Numbered route markers
+  route.filter(s=>s.lat&&s.lng).forEach((step,idx)=>{
+    const isRet=idx===route.length-1;
+    const color=isRet?'#2e7d52':idx===0?'#2e7d32':'#4caf78';
+    const label=isRet?'↩':idx===0?'⦿':step.step;
+    const m=L.marker([parseFloat(step.lat),parseFloat(step.lng)],{
+      icon:makeIcon(label,color,40,isRet),
+      zIndexOffset:1000+idx,
+      title:step.name,
+    }).addTo(map);
+    m.bindPopup(popupHTML(step,step.step),{maxWidth:240});
+    routeMarkers.push(m);
+  });
+
+  // Fit bounds
+  map.fitBounds(L.latLngBounds(coords),{padding:[40,40]});
+}
+
+/* ── Back ───────────────────────────────────────────────────────────────────── */
+function backToSpots(){
+  document.getElementById('routePanel').classList.add('hidden');
+  document.getElementById('spotsPanel').classList.remove('hidden');
+  clearRouteOverlay();
+  placeSpotMarkers();
+}
+function clearRouteOverlay(){
+  if(routeLine){ map.removeLayer(routeLine); routeLine=null; }
+  routeMarkers.forEach(m=>map.removeLayer(m));
+  routeMarkers=[];
+}
+
+/* ── Toast ──────────────────────────────────────────────────────────────────── */
+function showError(msg){
+  const t=document.getElementById('toast');
+  t.textContent='⚠ '+msg;
+  t.classList.add('active');
+  setTimeout(()=>t.classList.remove('active'),6000);
+}
+
+/* ── Boot ───────────────────────────────────────────────────────────────────── */
+initMap();
+loadSpots();
+</script>
+</body>
+</html>
